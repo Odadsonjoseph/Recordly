@@ -1,9 +1,15 @@
+import { useState } from "react";
 import CaptionListPanel from "@/components/video-editor/CaptionListPanel";
+import { RevoicePanel } from "@/components/video-editor/revoice/RevoicePanel";
 
 import type { ResolvedSettingsPanelProps } from "./settingsPanelDefaults";
 import { useSettingsTranslations } from "./useSettingsTranslations";
 
 export const captionItemSettingsKeys = [
+	"videoPath",
+	"audioRegions",
+	"onAudioAdded",
+	"onAudioDelete",
 	"autoCaptions",
 	"captionCurrentTimeMs",
 	"selectedCaptionId",
@@ -17,6 +23,10 @@ export const captionItemSettingsKeys = [
 type Props = Pick<ResolvedSettingsPanelProps, (typeof captionItemSettingsKeys)[number]>;
 export function CaptionItemSettings(props: Props) {
 	const {
+		videoPath,
+		audioRegions,
+		onAudioAdded,
+		onAudioDelete,
 		autoCaptions,
 		captionCurrentTimeMs,
 		selectedCaptionId,
@@ -28,6 +38,7 @@ export function CaptionItemSettings(props: Props) {
 		onCaptionDelete,
 	} = props;
 	const { tSettings } = useSettingsTranslations();
+	const [revoiceAudioPath, setRevoiceAudioPath] = useState<string | null>(null);
 
 	return (
 		<section className="flex flex-col gap-4">
@@ -53,6 +64,21 @@ export function CaptionItemSettings(props: Props) {
 					</p>
 				</div>
 			)}
+			{videoPath ? (
+				<RevoicePanel
+					videoPath={videoPath}
+					cues={autoCaptions}
+					onRevoiceDone={(result) => {
+						onAudioAdded?.({ start: 0, end: result.durationMs }, result.audioPath);
+						setRevoiceAudioPath(result.audioPath);
+					}}
+					onUseOriginal={() => {
+						const region = audioRegions?.find((r) => r.audioPath === revoiceAudioPath);
+						if (region) onAudioDelete?.(region.id);
+						setRevoiceAudioPath(null);
+					}}
+				/>
+			) : null}
 		</section>
 	);
 }

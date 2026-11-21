@@ -345,6 +345,7 @@ function VideoEditorContent() {
 		})(),
 	);
 	const settingsPanelProps = useEditorSettingsPanelProps({
+		videoPath,
 		activeEffectSection,
 		appearance,
 		timeline,

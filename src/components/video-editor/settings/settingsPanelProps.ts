@@ -1,8 +1,10 @@
 import type { User } from "@supabase/supabase-js";
 import type { CaptionRetimeSpan } from "@/components/video-editor/captionOps";
+import type { Span } from "dnd-timeline";
 import type {
 	AnnotationRegion,
 	AnnotationType,
+	AudioRegion,
 	AutoCaptionSettings,
 	CaptionCue,
 	CropRegion,
@@ -44,6 +46,9 @@ export interface SettingsPanelProps {
 	onClipSpeedChange?: (speed: number) => void;
 	onClipMutedChange?: (muted: boolean) => void;
 	onClipDelete?: (id: string) => void;
+	videoPath?: string;
+	audioRegions?: AudioRegion[];
+	onAudioAdded?: (span: Span, audioPath: string, trackIndex?: number) => void;
 	selectedAudioId?: string | null;
 	selectedAudioVolume?: number | null;
 	selectedAudioNormalize?: boolean | null;

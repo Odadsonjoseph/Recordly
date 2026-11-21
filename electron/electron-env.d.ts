@@ -903,6 +903,27 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		generateRevoice: (options: {
+			videoPath: string;
+			voiceId: string;
+			speed: number;
+			cleanFillers?: boolean;
+			cleanGrammar?: boolean;
+			muteOriginal?: boolean;
+			cues?: { text: string; startMs: number; endMs: number }[];
+			captionModelId?: import("../src/shared/captionModels").CaptionModelId;
+			engine?: "parakeet" | "whisper";
+		}) => Promise<{
+			success: boolean;
+			result?: import("../src/shared/revoice").RevoiceResult;
+			error?: string;
+		}>;
+		getRevoiceModelStatus: () => Promise<{
+			success: boolean;
+			installed: boolean;
+			modelUrl?: string;
+			error?: string;
+		}>;
 		setCurrentVideoPath: (
 			path: string,
 			options?: {

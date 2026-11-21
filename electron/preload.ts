@@ -932,6 +932,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	}) => {
 		return ipcRenderer.invoke("generate-auto-captions", options);
 	},
+	generateRevoice: (options: {
+		videoPath: string;
+		voiceId: string;
+		speed: number;
+		cleanFillers?: boolean;
+		cleanGrammar?: boolean;
+		muteOriginal?: boolean;
+		cues?: { text: string; startMs: number; endMs: number }[];
+		captionModelId?: CaptionModelId;
+		engine?: "parakeet" | "whisper";
+	}) => {
+		return ipcRenderer.invoke("generate-revoice", options);
+	},
+	getRevoiceModelStatus: () => {
+		return ipcRenderer.invoke("get-revoice-model-status");
+	},
 	setCurrentVideoPath: (
 		path: string,
 		options?: {

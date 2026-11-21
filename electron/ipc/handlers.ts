@@ -13,6 +13,7 @@ import { registerGifOptimizationHandlers } from "./register/gifOptimization";
 import { registerPermissionHandlers } from "./register/permissions";
 import { registerProjectHandlers } from "./register/project";
 import { registerRecordingHandlers } from "./register/recording";
+import { registerRevoiceHandlers } from "./register/revoice";
 import { registerSettingsHandlers } from "./register/settings";
 import { registerSourceHandlers } from "./register/sources";
 import {
@@ -82,6 +83,7 @@ export function registerIpcHandlers(
 	registerGifOptimizationHandlers();
 	registerExportDiagnosticHandlers();
 	registerCaptionHandlers();
+	registerRevoiceHandlers();
 	registerCloudShareHandlers();
 	registerCloudBillingHandlers();
 	registerProjectHandlers();
