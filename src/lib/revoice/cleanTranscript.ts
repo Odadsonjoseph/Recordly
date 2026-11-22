@@ -76,7 +76,7 @@ export function cleanTranscript(raw: string): CleanedTranscript {
 	// 1. Multi-word fillers first ("you know", "sort of"), then single words.
 	for (const filler of ["you know", "i mean", "sort of", "kind of", "okay so", "so yeah"]) {
 		const re = new RegExp(`\\b${filler}\\b[,]?`, "gi");
-		text = text.replace(re, (m) => {
+		text = text.replace(re, () => {
 			removedFillers += 1;
 			return "";
 		});

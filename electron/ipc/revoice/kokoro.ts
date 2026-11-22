@@ -10,6 +10,7 @@
 // No API key, no network at synthesis time, nothing leaves the Mac.
 
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { app } from "electron";
 
@@ -43,9 +44,12 @@ export async function isKokoroInstalled(): Promise<boolean> {
 }
 
 async function loadSherpa(): Promise<SherpaOnnx> {
-	// Dynamic import keeps the native module out of the startup path.
-	const mod = await import("sherpa-onnx-node");
-	return mod;
+	// sherpa-onnx-node ships no type declarations, so a static/dynamic
+	// import fails TS7016. Same pattern as electron/ipc/captions/parakeet.ts:
+	// load it lazily via createRequire so a missing native binding fails
+	// only when Re-voice is used, never at app startup.
+	const nodeRequire = createRequire(import.meta.url);
+	return nodeRequire("sherpa-onnx-node") as SherpaOnnx;
 }
 
 export interface KokoroSynthOptions {

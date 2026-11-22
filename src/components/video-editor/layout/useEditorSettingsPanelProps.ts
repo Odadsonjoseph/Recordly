@@ -28,7 +28,7 @@ type Input = {
 	isPlaying: boolean;
 	aspectRatio: AspectRatio;
 	setAspectRatio: Dispatch<SetStateAction<AspectRatio>>;
-	videoPath: string;
+	videoPath: string | null;
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
 	whisperModelDownloadStatus: "idle" | "downloading" | "downloaded" | "error";
@@ -100,7 +100,7 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onClipSpeedChange: clipCommands.handleClipSpeedChange,
 		onClipMutedChange: clipCommands.handleClipMutedChange,
 		onClipDelete: clipCommands.handleClipDelete,
-		videoPath,
+		videoPath: videoPath ?? undefined,
 		audioRegions: timeline.audioRegions,
 		onAudioAdded: audioCommands.handleAudioAdded,
 		selectedAudioId: timeline.selectedAudioId,
