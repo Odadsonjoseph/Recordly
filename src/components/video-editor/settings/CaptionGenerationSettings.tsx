@@ -27,7 +27,7 @@ import {
 	type CaptionCue,
 } from "../types";
 import type { Span } from "dnd-timeline";
-import type { DeadSpaceSpan } from "../../lib/revoice/deadSpace";
+import type { DeadSpaceSpan } from "../../../lib/revoice/deadSpace";
 import { RevoicePanel } from "../revoice/RevoicePanel";
 import { CaptionStylePicker } from "./CaptionStylePicker";
 
