@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { desktopCapturer } from "electron";
 import { ensureNativeWindowListBinary } from "../paths/binaries";
 import {
 	cachedNativeMacWindowSources,
@@ -19,6 +20,26 @@ import { resolveWindowsWindowBounds } from "../windowsWindowControl";
 
 const execFileAsync = promisify(execFile);
 let pendingMacWindowSources: Promise<NativeMacWindowSource[]> | undefined;
+
+/**
+ * Warm up TCC: trigger an Electron-level screen capture API call so macOS
+ * activates the screen-recording grant for this process tree before the
+ * native window-list helper spawns and calls SCShareableContent — the same
+ * warm-up startMacCapture does before spawning the recorder helper.
+ * Without it the helper's SCShareableContent throws even though the app
+ * itself has permission (seen on unsigned builds, where macOS treats the
+ * helper as a separate identity from the app).
+ */
+async function warmUpScreenCaptureTcc(): Promise<void> {
+	try {
+		await desktopCapturer.getSources({
+			types: ["screen"],
+			thumbnailSize: { width: 1, height: 1 },
+		});
+	} catch {
+		// non-fatal – the helper will report its own TCC status
+	}
+}
 
 export async function getNativeMacWindowSources(options?: { maxAgeMs?: number }) {
 	if (process.platform !== "darwin") {
@@ -40,6 +61,7 @@ export async function getNativeMacWindowSources(options?: { maxAgeMs?: number })
 async function loadMacWindowSources(): Promise<NativeMacWindowSource[]> {
 	try {
 		const binaryPath = await ensureNativeWindowListBinary();
+		await warmUpScreenCaptureTcc();
 		const { stdout } = await execFileAsync(binaryPath, [], {
 			timeout: 30000,
 			maxBuffer: 10 * 1024 * 1024,
@@ -77,6 +99,7 @@ export async function getNativeMacWindowsFrontToBack(options?: {
 
 	try {
 		const binaryPath = await ensureNativeWindowListBinary();
+		await warmUpScreenCaptureTcc();
 		const { stdout } = await execFileAsync(binaryPath, ["--z-order"], {
 			timeout: 10000,
 			maxBuffer: 10 * 1024 * 1024,
