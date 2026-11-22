@@ -91,13 +91,52 @@ function atempoFor(slotMs: number, audioMs: number): number | null {
 	return 1 / ratio;
 }
 
+/**
+ * v8 — the editor's videoPath is usually the local media-server URL
+ * (http://127.0.0.1:<port>/video?path=<urlencoded file path>), not a
+ * filesystem path. Node path math on that URL *looks* right — dirname
+ * strips to the origin and basename keeps the whole `video?path=...`
+ * query — so the merged wav path came out as an http URL and ffmpeg
+ * tried to PUT it to the media server, which does not accept writes
+ * ("Broken pipe" after ~1s). Resolve to the real file path first.
+ * Recordly's own rule (src/lib/localMediaUrl.ts) is "persist the file
+ * path, never this URL"; audio playback resolves file paths itself.
+ */
+function resolveLocalFilePath(videoPath: string): string {
+	try {
+		const url = new URL(videoPath);
+		if (
+			["http:", "https:"].includes(url.protocol) &&
+			["127.0.0.1", "localhost"].includes(url.hostname) &&
+			url.pathname === "/video"
+		) {
+			const filePath = url.searchParams.get("path");
+			if (
+				filePath &&
+				(/^\/.*/.test(filePath) ||
+					/^[A-Za-z]:[\\/]/.test(filePath) ||
+					filePath.startsWith("\\\\"))
+			) {
+				return filePath;
+			}
+		}
+		if (url.protocol === "file:") {
+			return decodeURIComponent(url.pathname);
+		}
+	} catch {
+		// Not a URL — treat it as a plain filesystem path.
+	}
+	return videoPath;
+}
+
 export async function generateRevoice(options: GenerateRevoiceOptions): Promise<RevoiceResult> {
 	const voice = REVOICE_VOICES.find((v) => v.id === options.voiceId) ?? REVOICE_VOICES[0]!;
 	if (!options.cues.length) {
 		throw new Error("No captions to re-voice yet. Run Auto-captions first, then tap AI Re-voice.");
 	}
 	const ffmpegPath = getFfmpegBinaryPath();
-	const baseName = path.basename(options.videoPath, path.extname(options.videoPath));
+	const videoFilePath = resolveLocalFilePath(options.videoPath);
+	const baseName = path.basename(videoFilePath, path.extname(videoFilePath));
 	const workDir = path.join(app.getPath("temp"), `recordly-revoice-${Date.now()}`);
 	await fs.mkdir(workDir, { recursive: true });
 
@@ -149,7 +188,7 @@ export async function generateRevoice(options: GenerateRevoiceOptions): Promise<
 		// last cue end, or the last phrase end if it spills slightly.
 		const lastEnd = Math.max(...phrases.map((p) => p.endMs));
 		const outPath = path.join(
-			path.dirname(options.videoPath),
+			path.dirname(videoFilePath),
 			`${baseName}.revoice.wav`,
 		);
 		const inputs: string[] = [];
