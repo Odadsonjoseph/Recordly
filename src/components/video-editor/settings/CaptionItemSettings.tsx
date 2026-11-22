@@ -44,6 +44,28 @@ export function CaptionItemSettings(props: Props) {
 
 	return (
 		<section className="flex flex-col gap-4">
+			{videoPath ? (
+				<RevoicePanel
+					videoPath={videoPath}
+					cues={autoCaptions}
+					onRevoiceDone={(result) => {
+						// A second Clean up replaces the first voice instead of
+						// stacking a second narration on top of it.
+						const prev = revoiceAudioPath
+							? audioRegions?.find((r) => r.audioPath === revoiceAudioPath)
+							: undefined;
+						if (prev) onAudioDelete?.(prev.id);
+						onAudioAdded?.({ start: 0, end: result.durationMs }, result.audioPath);
+						setRevoiceAudioPath(result.audioPath);
+					}}
+					onUseOriginal={() => {
+						const region = audioRegions?.find((r) => r.audioPath === revoiceAudioPath);
+						if (region) onAudioDelete?.(region.id);
+						setRevoiceAudioPath(null);
+					}}
+					onRemoveDeadSpaces={onRemoveDeadSpaces}
+				/>
+			) : null}
 			{selectedCaptionId !== null ? (
 				<CaptionListPanel
 					cues={autoCaptions}
@@ -66,22 +88,6 @@ export function CaptionItemSettings(props: Props) {
 					</p>
 				</div>
 			)}
-			{videoPath ? (
-				<RevoicePanel
-					videoPath={videoPath}
-					cues={autoCaptions}
-					onRevoiceDone={(result) => {
-						onAudioAdded?.({ start: 0, end: result.durationMs }, result.audioPath);
-						setRevoiceAudioPath(result.audioPath);
-					}}
-					onUseOriginal={() => {
-						const region = audioRegions?.find((r) => r.audioPath === revoiceAudioPath);
-						if (region) onAudioDelete?.(region.id);
-						setRevoiceAudioPath(null);
-					}}
-					onRemoveDeadSpaces={onRemoveDeadSpaces}
-				/>
-			) : null}
 		</section>
 	);
 }

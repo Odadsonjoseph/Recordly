@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { CaptionModelDownloadProgress, CaptionModelId } from "../src/shared/captionModels";
+import type { RevoiceModelDownloadState } from "../src/shared/revoice";
 import type { CloudBillingInput } from "../src/types/cloudBilling";
 import type { HudOverlayRegion } from "./hudOverlayBounds";
 import type { RecordingSessionData } from "./ipc/types";
@@ -940,6 +941,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		cleanGrammar?: boolean;
 		muteOriginal?: boolean;
 		cues?: { text: string; startMs: number; endMs: number }[];
+		cutSpans?: { startMs: number; endMs: number }[];
 		captionModelId?: CaptionModelId;
 		engine?: "parakeet" | "whisper";
 	}) => {
@@ -947,6 +949,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	getRevoiceModelStatus: () => {
 		return ipcRenderer.invoke("get-revoice-model-status");
+	},
+	downloadRevoiceModel: () => {
+		return ipcRenderer.invoke("download-revoice-model");
+	},
+	onRevoiceModelDownloadProgress: (callback: (state: RevoiceModelDownloadState) => void) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: RevoiceModelDownloadState,
+		) => callback(payload);
+		ipcRenderer.on("revoice-model-download-progress", listener);
+		return () => ipcRenderer.removeListener("revoice-model-download-progress", listener);
 	},
 	detectDeadSpaces: (options: {
 		videoPath: string;

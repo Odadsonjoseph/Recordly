@@ -106,3 +106,27 @@ export function mapDeadSpaceSpansToTimeline(
 	}
 	return out;
 }
+
+/**
+ * Complement of the cut spans inside [0, totalMs): the stretches of audio
+ * that survive. Used by the re-voice merge (generate.ts) to cut the same
+ * dead spaces out of the new voice track, so it matches the shortened video.
+ */
+export function retainedSegments(
+	totalMs: number,
+	spans: DeadSpaceSpan[],
+): DeadSpaceSpan[] {
+	const sorted = [...spans]
+		.filter((s) => s.endMs > s.startMs)
+		.map((s) => ({ startMs: Math.max(0, s.startMs), endMs: Math.min(totalMs, s.endMs) }))
+		.filter((s) => s.endMs > s.startMs)
+		.sort((a, b) => a.startMs - b.startMs);
+	const out: DeadSpaceSpan[] = [];
+	let cursor = 0;
+	for (const span of sorted) {
+		if (span.startMs > cursor) out.push({ startMs: cursor, endMs: span.startMs });
+		cursor = Math.max(cursor, span.endMs);
+	}
+	if (cursor < totalMs) out.push({ startMs: cursor, endMs: totalMs });
+	return out;
+}

@@ -27,6 +27,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
 import { cleanTranscript } from "../../../src/lib/revoice/cleanTranscript";
+import { retainedSegments, type DeadSpaceSpan } from "../../../src/lib/revoice/deadSpace";
 import type {
 	RevoiceOptions,
 	RevoicePhrase,
@@ -49,6 +50,9 @@ export interface GenerateRevoiceOptions extends RevoiceOptions {
 	/** CaptionCue[] from the renderer, or from generateAutoCaptionsFromVideo
 	 * in the register layer. generateRevoice itself never transcribes. */
 	cues: RevoiceCue[];
+	/** v7 — source-time spans to also cut out of the merged voice wav, so
+	 * the new voice matches a video shortened by the same dead-space cut. */
+	cutSpans?: DeadSpaceSpan[];
 	onProgress?: (stage: string, done: number, total: number) => void;
 }
 
@@ -179,11 +183,30 @@ export async function generateRevoice(options: GenerateRevoiceOptions): Promise<
 			{ timeout: 10 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
 		);
 
+		// 4. v7 — Clean up also cuts the dead spaces out of the new voice
+		// track, using the same source-time spans the panel cuts from the
+		// video timeline. Without this the voice would keep the original
+		// silences and drift out of sync with the shortened video
+		// (applySequence only moves an audio region's start anchor — it
+		// never cuts the middle out of it).
+		let durationMs = lastEnd;
+		const spans = (options.cutSpans ?? []).filter((span) => span.endMs > span.startMs);
+		if (spans.length) {
+			const retained = retainedSegments(lastEnd, spans);
+			const retainedMs = retained.reduce((sum, seg) => sum + (seg.endMs - seg.startMs), 0);
+			if (retained.length && retainedMs < lastEnd) {
+				const cutPath = `${outPath}.tmp.wav`;
+				await cutWavSpans(ffmpegPath, outPath, cutPath, retained);
+				await fs.rename(cutPath, outPath);
+				durationMs = retainedMs;
+			}
+		}
+
 		return {
 			id: `revoice-${Date.now()}`,
 			videoPath: options.videoPath,
 			audioPath: outPath,
-			durationMs: lastEnd,
+			durationMs,
 			phrases,
 			originalWordCount: originalWords,
 			cleanedWordCount: cleanedWords,
@@ -195,4 +218,55 @@ export async function generateRevoice(options: GenerateRevoiceOptions): Promise<
 		// Phrase wavs are intermediates; the merged .revoice.wav is the keep.
 		await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
 	}
+}
+
+function secondsForFilter(ms: number): string {
+	return (ms / 1000).toFixed(3);
+}
+
+/**
+ * Cut the given retained segments out of a wav: atrim each surviving
+ * stretch and concat them back together, so the result is the same audio
+ * with the cut spans removed. One segment needs no concat.
+ */
+async function cutWavSpans(
+	ffmpegPath: string,
+	inPath: string,
+	outPath: string,
+	retained: DeadSpaceSpan[],
+): Promise<void> {
+	let filterComplex: string;
+	if (retained.length === 1) {
+		const seg = retained[0]!;
+		filterComplex = `[0:a]atrim=start=${secondsForFilter(seg.startMs)}:end=${secondsForFilter(seg.endMs)},asetpts=PTS-STARTPTS[aout]`;
+	} else {
+		const parts = retained
+			.map(
+				(seg, i) =>
+					`[0:a]atrim=start=${secondsForFilter(seg.startMs)}:end=${secondsForFilter(seg.endMs)},asetpts=PTS-STARTPTS[s${i}]`,
+			)
+			.join(";");
+		const inputs = retained.map((_, i) => `[s${i}]`).join("");
+		filterComplex = `${parts};${inputs}concat=n=${retained.length}:v=0:a=1[aout]`;
+	}
+	await execFileAsync(
+		ffmpegPath,
+		[
+			"-y",
+			"-i",
+			inPath,
+			"-filter_complex",
+			filterComplex,
+			"-map",
+			"[aout]",
+			"-ac",
+			"1",
+			"-ar",
+			"24000",
+			"-c:a",
+			"pcm_s16le",
+			outPath,
+		],
+		{ timeout: 10 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+	);
 }

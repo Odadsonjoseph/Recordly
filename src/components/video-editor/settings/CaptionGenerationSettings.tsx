@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ProgressBar } from "@heroui/react";
 import { Button } from "@/components/ui/button";
 import { ColorControl } from "@/components/ui/color-picker";
@@ -19,7 +20,15 @@ import {
 } from "@/shared/captionModels";
 import { applyCaptionPreset } from "../captionPresets";
 import { SliderControl } from "../SliderControl";
-import { type AutoCaptionAnimation, type AutoCaptionSettings } from "../types";
+import {
+	type AudioRegion,
+	type AutoCaptionAnimation,
+	type AutoCaptionSettings,
+	type CaptionCue,
+} from "../types";
+import type { Span } from "dnd-timeline";
+import type { DeadSpaceSpan } from "../../lib/revoice/deadSpace";
+import { RevoicePanel } from "../revoice/RevoicePanel";
 import { CaptionStylePicker } from "./CaptionStylePicker";
 
 interface CaptionGenerationSettingsProps {
@@ -38,6 +47,14 @@ interface CaptionGenerationSettingsProps {
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
+	/** v7 — Clean up panel (same as CaptionItemSettings). All optional: the
+	 * panel only renders when videoPath is set. */
+	videoPath?: string;
+	cues?: CaptionCue[];
+	audioRegions?: AudioRegion[];
+	onAudioAdded?: (span: Span, audioPath: string, trackIndex?: number) => void;
+	onAudioDelete?: (id: string) => void;
+	onRemoveDeadSpaces?: (spans: DeadSpaceSpan[]) => void;
 }
 
 const CAPTION_ANIMATION_OPTIONS: Array<{ value: AutoCaptionAnimation; label: string }> = [
@@ -62,6 +79,12 @@ export function CaptionGenerationSettings({
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
 	onDeleteWhisperSmallModel,
+	videoPath,
+	cues = [],
+	audioRegions,
+	onAudioAdded,
+	onAudioDelete,
+	onRemoveDeadSpaces,
 }: CaptionGenerationSettingsProps) {
 	const te = useScopedT("editing");
 	const tSettings = useScopedT("settings");
@@ -83,9 +106,32 @@ export function CaptionGenerationSettings({
 	const modelReady = Boolean(whisperModelPath) && whisperModelDownloadStatus === "downloaded";
 	const isBusy = isGeneratingCaptions || isDownloading || captionModelLoading;
 	const model = getCaptionModel(captionModelId);
+	const [revoiceAudioPath, setRevoiceAudioPath] = useState<string | null>(null);
 
 	return (
 		<section className="flex flex-col gap-5">
+			{videoPath ? (
+				<RevoicePanel
+					videoPath={videoPath}
+					cues={cues}
+					onRevoiceDone={(result) => {
+						// A second Clean up replaces the first voice instead of
+						// stacking a second narration on top of it.
+						const prev = revoiceAudioPath
+							? audioRegions?.find((r) => r.audioPath === revoiceAudioPath)
+							: undefined;
+						if (prev) onAudioDelete?.(prev.id);
+						onAudioAdded?.({ start: 0, end: result.durationMs }, result.audioPath);
+						setRevoiceAudioPath(result.audioPath);
+					}}
+					onUseOriginal={() => {
+						const region = audioRegions?.find((r) => r.audioPath === revoiceAudioPath);
+						if (region) onAudioDelete?.(region.id);
+						setRevoiceAudioPath(null);
+					}}
+					onRemoveDeadSpaces={onRemoveDeadSpaces}
+				/>
+			) : null}
 			<div className="space-y-3 rounded-xl border border-border p-3">
 				<div className="flex items-center justify-between gap-3">
 					<div className="flex min-w-0 items-center gap-2 text-xs font-medium">

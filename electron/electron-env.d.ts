@@ -911,6 +911,7 @@ interface Window {
 			cleanGrammar?: boolean;
 			muteOriginal?: boolean;
 			cues?: { text: string; startMs: number; endMs: number }[];
+			cutSpans?: { startMs: number; endMs: number }[];
 			captionModelId?: import("../src/shared/captionModels").CaptionModelId;
 			engine?: "parakeet" | "whisper";
 		}) => Promise<{
@@ -924,6 +925,16 @@ interface Window {
 			modelUrl?: string;
 			error?: string;
 		}>;
+		downloadRevoiceModel: () => Promise<{
+			success: boolean;
+			installed?: boolean;
+			error?: string;
+		}>;
+		onRevoiceModelDownloadProgress: (
+			callback: (
+				state: import("../src/shared/revoice").RevoiceModelDownloadState,
+			) => void,
+		) => () => void;
 		detectDeadSpaces: (options: {
 			videoPath: string;
 			thresholdMs?: number;

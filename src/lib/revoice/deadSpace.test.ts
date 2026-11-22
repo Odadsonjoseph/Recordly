@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDeadSpaces, mapDeadSpaceSpansToTimeline } from "./deadSpace";
+import { computeDeadSpaces, mapDeadSpaceSpansToTimeline, retainedSegments } from "./deadSpace";
 
 describe("computeDeadSpaces", () => {
 	it("cuts long silences, keeps a natural pause at the end", () => {
@@ -56,5 +56,44 @@ describe("mapDeadSpaceSpansToTimeline", () => {
 			{ startMs: 10000, endMs: 20000, sourceStartMs: 10000, speed: 1 },
 		]);
 		expect(mapped).toEqual([]);
+	});
+});
+
+describe("retainedSegments", () => {
+	it("returns the whole timeline when nothing is cut", () => {
+		expect(retainedSegments(25000, [])).toEqual([{ startMs: 0, endMs: 25000 }]);
+	});
+
+	it("cuts one span out of the middle", () => {
+		expect(retainedSegments(25000, [{ startMs: 5000, endMs: 8600 }])).toEqual([
+			{ startMs: 0, endMs: 5000 },
+			{ startMs: 8600, endMs: 25000 },
+		]);
+	});
+
+	it("drops the head and tail when spans touch the ends", () => {
+		expect(
+			retainedSegments(25000, [
+				{ startMs: 0, endMs: 2000 },
+				{ startMs: 23000, endMs: 25000 },
+			]),
+		).toEqual([{ startMs: 2000, endMs: 23000 }]);
+	});
+
+	it("merges overlapping spans and clips to the timeline", () => {
+		expect(
+			retainedSegments(25000, [
+				{ startMs: 5000, endMs: 9000 },
+				{ startMs: 8500, endMs: 12000 },
+				{ startMs: 24000, endMs: 99999 },
+			]),
+		).toEqual([
+			{ startMs: 0, endMs: 5000 },
+			{ startMs: 12000, endMs: 24000 },
+		]);
+	});
+
+	it("returns nothing when the spans cover the whole timeline", () => {
+		expect(retainedSegments(10000, [{ startMs: 0, endMs: 10000 }])).toEqual([]);
 	});
 });

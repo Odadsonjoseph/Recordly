@@ -86,3 +86,11 @@ export interface RevoiceProgress {
 	phraseCount?: number;
 	message: string;
 }
+
+/** Progress of the one-time Kokoro voice model download (~300 MB). */
+export interface RevoiceModelDownloadState {
+	status: "idle" | "downloading" | "extracting" | "downloaded" | "error";
+	/** 0–100. 0 while the total size is still unknown. */
+	progress: number;
+	error?: string;
+}

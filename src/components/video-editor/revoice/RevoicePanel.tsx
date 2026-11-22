@@ -1,31 +1,26 @@
-// AI Re-voice panel — renderer side. v2, HEAD 8f2491dc.
-// Place this next to the Captions / Audio panels in the video editor.
-// It does NOT call Kokoro directly.
+// AI Re-voice + dead-space removal, merged into one "Clean up" button — v7.
+// One tap does everything, in order:
+//   1. Downloads the Kokoro voice model first if it is missing (~300 MB, once).
+//   2. Finds silent gaps over 2 s and cuts them out of the video.
+//   3. Cleans the script (fillers, stutters, false starts) and re-speaks it
+//      in the chosen AI narrator voice, at the same spots in the video.
+// The new voice track is cut by the same spans as the video, so the two stay
+// in sync: main cuts the spans out of the merged wav (generate.ts cutSpans),
+// and the panel cuts the same spans out of the timeline via
+// onRemoveDeadSpaces. Your original mic audio stays muted underneath —
+// nothing is deleted, tap "Use original voice" to A/B.
 //
-// v2 fix — flat preload API (was nested in v1, which does not match
-// Recordly): electron/preload.ts exposes flat methods, like
-//   generateAutoCaptions: (o) => ipcRenderer.invoke("generate-auto-captions", o)
-// So this panel calls:
-//   window.electronAPI.generateRevoice({ videoPath, voiceId, speed, cues })
-//     -> { success: boolean, result?: RevoiceResult, error?: string }
-//   window.electronAPI.getRevoiceModelStatus()
-//     -> { success, installed, modelUrl }
-//
-// Cues: pass the editor's CaptionCue[] { id, startMs, endMs, text }
-// (src/components/video-editor/types.ts) in. If you pass [], main
-// transcribes first via generateAutoCaptionsFromVideo — see
-// electron/ipc/register/revoice.ts. Either way the panel does not
-// need to know how transcription works.
-//
-// On success, the caller must add an AudioRegion (same type as the
-// existing extra-audio regions, src/components/video-editor/types.ts):
-//   { id: result.id, startMs: 0, endMs: result.durationMs,
-//     audioPath: result.audioPath, volume: 1 }
-// and mute the original mic track in SourceAudioTrackSettings.
-// Original stays muted, not deleted, so you can A/B in one tap.
+// Placement: this panel renders at the TOP of both caption views — the
+// per-caption view (CaptionItemSettings) and the Captions home
+// (CaptionGenerationSettings) — so it is visible as soon as Captions opens.
 
-import { useState } from "react";
-import { DEFAULT_REVOICE_OPTIONS, REVOICE_VOICES, type RevoiceResult } from "@/shared/revoice";
+import { useEffect, useState } from "react";
+import {
+	DEFAULT_REVOICE_OPTIONS,
+	REVOICE_VOICES,
+	type RevoiceModelDownloadState,
+	type RevoiceResult,
+} from "@/shared/revoice";
 import type { CaptionCue } from "@/components/video-editor/types";
 import type { DeadSpaceSpan } from "@/lib/revoice/deadSpace";
 
@@ -45,32 +40,48 @@ export function RevoicePanel({ videoPath, cues, onRevoiceDone, onUseOriginal, on
 	const [status, setStatus] = useState<string>("");
 	const [busy, setBusy] = useState(false);
 	const [result, setResult] = useState<RevoiceResult | null>(null);
-	const [deadSpaceStatus, setDeadSpaceStatus] = useState<string>("");
+	const [modelInstalled, setModelInstalled] = useState<boolean | null>(null);
+	const [download, setDownload] = useState<RevoiceModelDownloadState>({ status: "idle", progress: 0 });
 
-	async function run() {
+	useEffect(() => {
+		let cancelled = false;
+		window.electronAPI
+			.getRevoiceModelStatus()
+			.then((res) => {
+				if (!cancelled) setModelInstalled(res.success ? res.installed : false);
+			})
+			.catch(() => {
+				if (!cancelled) setModelInstalled(false);
+			});
+		const unsubscribe = window.electronAPI.onRevoiceModelDownloadProgress((state) => {
+			if (cancelled) return;
+			setDownload(state);
+			if (state.status === "downloaded") setModelInstalled(true);
+		});
+		return () => {
+			cancelled = true;
+			unsubscribe();
+		};
+	}, []);
+
+	async function ensureModel(): Promise<void> {
+		if (modelInstalled) return;
+		setDownload({ status: "downloading", progress: 0 });
+		const response = await window.electronAPI.downloadRevoiceModel();
+		if (!response.success) {
+			setDownload({ status: "error", progress: 0, error: response.error });
+			throw new Error(response.error ?? "Voice model download failed.");
+		}
+		setModelInstalled(true);
+		setDownload({ status: "downloaded", progress: 100 });
+	}
+
+	async function downloadModel(): Promise<void> {
 		setBusy(true);
-		setStatus(cues.length ? "Cleaning your script, then re-speaking it…" : "Transcribing first, then cleaning and re-speaking…");
 		try {
-			const response: { success: boolean; result?: RevoiceResult; error?: string } =
-				await window.electronAPI.generateRevoice({
-					videoPath,
-					voiceId,
-					speed,
-					cleanFillers: true,
-					cleanGrammar: true,
-					muteOriginal: true,
-					cues: cues.map((c) => ({ text: c.text, startMs: c.startMs, endMs: c.endMs })),
-				});
-			if (!response.success || !response.result) {
-				throw new Error(response.error ?? "Re-voice failed.");
-			}
-			const out = response.result;
-			setResult(out);
-			setStatus(
-				`Done — ${out.phrases.length} phrases, ${out.removedFillers} fillers removed, ` +
-					`${out.originalWordCount} → ${out.cleanedWordCount} words. Original muted, tap “Use original” to A/B.`,
-			);
-			onRevoiceDone(out);
+			setStatus("Downloading the voice model (~300 MB, one time)…");
+			await ensureModel();
+			setStatus("Voice model ready — tap Clean up my video when you're ready.");
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -78,12 +89,80 @@ export function RevoicePanel({ videoPath, cues, onRevoiceDone, onUseOriginal, on
 		}
 	}
 
+	async function cleanUp(): Promise<void> {
+		setBusy(true);
+		setResult(null);
+		try {
+			// 1. Voice model first — the re-voice cannot run without it, and
+			// the old error gave no way to get it. Now the download is here.
+			if (!modelInstalled) {
+				setStatus("Downloading the voice model (~300 MB, one time)…");
+				await ensureModel();
+			}
+			// 2. Find the dead spaces. If detection fails, keep going and
+			// re-voice without cutting — a failed listen should not block
+			// the voice.
+			let spans: DeadSpaceSpan[] = [];
+			let cutNote = "";
+			try {
+				setStatus("Listening for silent gaps…");
+				const det = await window.electronAPI.detectDeadSpaces({ videoPath });
+				if (det.success && det.spans) spans = det.spans;
+				else cutNote = " (gap detection failed, so nothing was cut)";
+			} catch {
+				cutNote = " (gap detection failed, so nothing was cut)";
+			}
+			// 3. Re-voice, with the same spans cut out of the new audio so
+			// it matches the shorter video exactly.
+			setStatus(
+				cues.length
+					? "Cleaning your script, then re-speaking it…"
+					: "Transcribing first, then cleaning and re-speaking…",
+			);
+			const response = await window.electronAPI.generateRevoice({
+				videoPath,
+				voiceId,
+				speed,
+				cleanFillers: true,
+				cleanGrammar: true,
+				muteOriginal: true,
+				cues: cues.map((c) => ({ text: c.text, startMs: c.startMs, endMs: c.endMs })),
+				cutSpans: spans,
+			});
+			if (!response.success || !response.result) {
+				throw new Error(response.error ?? "Clean up failed.");
+			}
+			const out = response.result;
+			setResult(out);
+			// 4. Place the (already shortened) voice, then cut the video
+			// timeline by the same spans.
+			onRevoiceDone(out);
+			if (spans.length && onRemoveDeadSpaces) onRemoveDeadSpaces(spans);
+			const seconds = (
+				spans.reduce((sum, span) => sum + (span.endMs - span.startMs), 0) / 1000
+			).toFixed(1);
+			setStatus(
+				`Cleaned up — ${out.removedFillers} fillers removed, ` +
+					`${out.originalWordCount} → ${out.cleanedWordCount} words, ` +
+					`${spans.length} gap${spans.length === 1 ? "" : "s"} cut, video ${seconds}s shorter${cutNote}. ` +
+					`Original muted, tap "Use original" to A/B.`,
+			);
+		} catch (error) {
+			setStatus(error instanceof Error ? error.message : String(error));
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	const downloading = download.status === "downloading" || download.status === "extracting";
+
 	return (
-		<div className="flex flex-col gap-3 p-3">
-			<h3 className="text-sm font-semibold">AI Re-voice</h3>
+		<div className="flex flex-col gap-3 rounded-xl border border-border p-3">
+			<h3 className="text-sm font-semibold">Clean up</h3>
 			<p className="text-xs opacity-70">
-				Takes what you said, cleans it up, and re-speaks it in a clean AI narrator voice.
-				Your original stays muted underneath — nothing is deleted.
+				One tap: cuts the dead air, cleans up ums and stutters, and re-speaks
+				your narration in a clean AI voice. Your original stays muted
+				underneath — nothing is deleted.
 			</p>
 			<label className="text-xs">
 				Voice
@@ -113,66 +192,39 @@ export function RevoicePanel({ videoPath, cues, onRevoiceDone, onUseOriginal, on
 					className="w-full"
 				/>
 			</label>
+			{modelInstalled === false ? (
+				<div className="flex flex-col gap-2">
+					<p className="text-xs opacity-70">
+						The voice model is not downloaded yet — one-time download, about
+						300 MB, then it works offline.
+					</p>
+					<button
+						type="button"
+						onClick={downloadModel}
+						disabled={busy}
+						className="rounded border px-3 py-2 text-sm disabled:opacity-40"
+					>
+						{downloading ? `Downloading voice… ${download.progress}%` : "Download voice model"}
+					</button>
+				</div>
+			) : null}
 			<button
 				type="button"
-				onClick={run}
+				onClick={cleanUp}
 				disabled={busy}
 				className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-40"
 			>
-				{busy ? "Re-voicing…" : "Re-voice my narration"}
+				{busy ? "Cleaning up…" : "Clean up my video"}
 			</button>
 			{result ? (
 				<button type="button" onClick={onUseOriginal} className="rounded border px-3 py-2 text-sm">
 					Use original voice
 				</button>
 			) : null}
-			{status ? <p className="text-xs opacity-80">{status}</p> : null}
-			{onRemoveDeadSpaces ? (
-				<div className="flex flex-col gap-2 border-t pt-3">
-					<h4 className="text-xs font-semibold">Dead spaces</h4>
-					<p className="text-xs opacity-70">
-						Finds silent gaps over 2 seconds and cuts them out of the video,
-						keeping a short natural pause. Cut first, then re-voice — or re-voice
-						again after cutting, so the new voice matches the shorter video.
-					</p>
-					<button
-						type="button"
-						disabled={busy}
-						className="rounded border px-3 py-2 text-sm disabled:opacity-40"
-						onClick={async () => {
-							setBusy(true);
-							setDeadSpaceStatus("Listening for silent gaps…");
-							try {
-								const response: {
-									success: boolean;
-									spans?: DeadSpaceSpan[];
-									removedMs?: number;
-									error?: string;
-								} = await window.electronAPI.detectDeadSpaces({ videoPath });
-								if (!response.success || !response.spans) {
-									throw new Error(response.error ?? "Dead-space detection failed.");
-								}
-								if (!response.spans.length) {
-									setDeadSpaceStatus("No silent gaps over 2 seconds found.");
-								} else {
-									const seconds = ((response.removedMs ?? 0) / 1000).toFixed(1);
-									onRemoveDeadSpaces(response.spans);
-									setDeadSpaceStatus(
-										`Cut ${response.spans.length} gap${response.spans.length === 1 ? "" : "s"} — video is ${seconds}s shorter.`,
-									);
-								}
-							} catch (error) {
-								setDeadSpaceStatus(error instanceof Error ? error.message : String(error));
-							} finally {
-								setBusy(false);
-							}
-						}}
-					>
-						{busy ? "Cutting…" : "Cut dead spaces"}
-					</button>
-					{deadSpaceStatus ? <p className="text-xs opacity-80">{deadSpaceStatus}</p> : null}
-				</div>
+			{downloading ? (
+				<p className="text-xs opacity-80">Downloading voice… {download.progress}%</p>
 			) : null}
+			{status ? <p className="text-xs opacity-80">{status}</p> : null}
 			<p className="text-[11px] opacity-50">
 				Free and offline after a one-time voice download (~300 MB). No API key.
 			</p>

@@ -99,6 +99,11 @@ export function SettingsPanel(input: SettingsPanelProps) {
 		onGenerateAutoCaptions,
 		onClearAutoCaptions,
 		onDeleteWhisperSmallModel,
+		videoPath,
+		audioRegions,
+		onAudioAdded,
+		onAudioDelete,
+		onRemoveDeadSpaces,
 	} = props;
 	const backgroundScrollRef = useRef<HTMLDivElement>(null);
 	const backgroundScrollFade = useScrollFade(backgroundScrollRef, isBackgroundPanel);
@@ -229,6 +234,12 @@ export function SettingsPanel(input: SettingsPanelProps) {
 				return (
 					<CaptionGenerationSettings
 						advanced={advanced}
+						videoPath={videoPath}
+						cues={autoCaptions}
+						audioRegions={audioRegions}
+						onAudioAdded={onAudioAdded}
+						onAudioDelete={onAudioDelete}
+						onRemoveDeadSpaces={onRemoveDeadSpaces}
 						captionCueCount={autoCaptions.length}
 						autoCaptionSettings={autoCaptionSettings}
 						captionModelId={captionModelId}

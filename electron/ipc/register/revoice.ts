@@ -19,7 +19,8 @@ import type { AutoCaptionGenerationOptions } from "../captions/generate";
 import { generateAutoCaptionsFromVideo } from "../captions/generate";
 import { generateRevoice, type RevoiceCue } from "../revoice/generate";
 import { detectDeadSpaces } from "../revoice/deadSpace";
-import { isKokoroInstalled, KOKORO_MODEL_URL } from "../revoice/kokoro";
+import { downloadKokoroModel, isKokoroInstalled, KOKORO_MODEL_URL } from "../revoice/kokoro";
+import type { DeadSpaceSpan } from "../../../src/lib/revoice/deadSpace";
 
 export interface GenerateRevoiceRequest {
 	videoPath: string;
@@ -30,6 +31,8 @@ export interface GenerateRevoiceRequest {
 	muteOriginal?: boolean;
 	/** CaptionCue[] from the editor. Optional — main will transcribe if empty. */
 	cues?: RevoiceCue[];
+	/** v7 — source-time dead-space spans to cut out of the merged voice wav. */
+	cutSpans?: DeadSpaceSpan[];
 	/** Passed through when main has to transcribe itself. */
 	captionModelId?: AutoCaptionGenerationOptions["captionModelId"];
 	engine?: AutoCaptionGenerationOptions["engine"];
@@ -73,6 +76,7 @@ export function registerRevoiceHandlers() {
 				cleanGrammar: request.cleanGrammar ?? true,
 				muteOriginal: request.muteOriginal ?? true,
 				cues,
+				cutSpans: request.cutSpans,
 			});
 			return { success: true, result };
 		} catch (error) {
@@ -87,6 +91,21 @@ export function registerRevoiceHandlers() {
 			return { success: true, installed: await isKokoroInstalled(), modelUrl: KOKORO_MODEL_URL };
 		} catch (error) {
 			return { success: false, installed: false, error: String(error) };
+		}
+	});
+
+	// v7 — one-time Kokoro voice model download (~300 MB). Progress goes to
+	// the requesting window; a second call while one runs just joins it.
+	ipcMain.handle("download-revoice-model", async (event) => {
+		try {
+			await downloadKokoroModel((state) => {
+				if (!event.sender.isDestroyed()) {
+					event.sender.send("revoice-model-download-progress", state);
+				}
+			});
+			return { success: true, installed: await isKokoroInstalled() };
+		} catch (error) {
+			return { success: false, error: error instanceof Error ? error.message : String(error) };
 		}
 	});
 
