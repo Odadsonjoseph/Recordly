@@ -113,7 +113,7 @@ export function OnboardingController({
 				};
 			}
 			if (permissionsRequested) setStartWithPermissions(true);
-			if (!preview && !user && seen && !permissionsRequested) {
+			if (!preview && configured && !user && seen && !permissionsRequested) {
 				setReturningSignIn(true);
 				setOpen(true);
 			} else if (!checked.current && (permissionsRequested || !seen)) {
@@ -138,7 +138,7 @@ export function OnboardingController({
 	}, [ready, user, standalone, openWindow, preview]);
 
 	const finishPermissions = () => {
-		if ((!preview && (!user || authCallbackPending)) || finishingPermissions.current) return;
+		if ((!preview && configured && (!user || authCallbackPending)) || finishingPermissions.current) return;
 		finishingPermissions.current = true;
 		let restorePermissionsRequest = false;
 		let previousPreviewDismissal: boolean | null = null;
@@ -173,7 +173,7 @@ export function OnboardingController({
 			});
 	};
 	const finish = () => {
-		if (!preview && (!user || authCallbackPending)) return;
+		if (!preview && configured && (!user || authCallbackPending)) return;
 		if (!preview) saveAppSetting(SEEN_KEY, true);
 		finishPermissions();
 	};

@@ -31,7 +31,7 @@ function ReturningOnboarding({
 	const continuing = useRef(false);
 	const close = () => void window.electronAPI.closeOnboardingWindow();
 	const continueToHud = useCallback(async () => {
-		if (!signedIn || continuing.current || isCallbackPending()) return;
+		if ((!signedIn && auth.configured) || continuing.current || isCallbackPending()) return;
 		continuing.current = true;
 		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true)
 			saveAppSetting("recordly.onboarding.permissionsRequested", false);
@@ -47,7 +47,7 @@ function ReturningOnboarding({
 			continuing.current = false;
 			setNeedsPermissions(true);
 		}
-	}, [signedIn, isCallbackPending]);
+	}, [signedIn, auth.configured, isCallbackPending]);
 
 	useEffect(() => {
 		// A cold launch can carry an OAuth callback. Keep its renderer alive
@@ -67,6 +67,13 @@ function ReturningOnboarding({
 			cancelled = true;
 		};
 	}, [auth.loading, callbackActivity, signedIn, continueToHud, needsStartConfirmation]);
+
+	// Local-only mode: no cloud auth is configured in this build, so there is
+	// no account to sign in with. Skip the sign-in screen and open recording controls.
+	useEffect(() => {
+		if (auth.loading || auth.configured || signedIn) return;
+		void continueToHud();
+	}, [auth.loading, auth.configured, signedIn, continueToHud]);
 
 	useEffect(() => {
 		if (view === "sign-in") setShowedSignIn(true);

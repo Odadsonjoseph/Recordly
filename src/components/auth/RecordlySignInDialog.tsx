@@ -502,7 +502,16 @@ export function RecordlySignInDialog({
 						</Alert>
 					) : null}
 					{!configured && !user && (!(onboarding && preview) || reauthenticating) && (
-						<Description role="status">{t("editor.cloud.unavailable")}</Description>
+						<>
+							<Description role="status">{t("editor.cloud.unavailable")}</Description>
+							<Button
+								variant="primary"
+								className="mt-2 h-11 w-full rounded-xl"
+								onPress={onAuthenticated}
+							>
+								{ot("continueWithoutAccount", "Continue without an account")}
+							</Button>
+						</>
 					)}
 				</div>
 				<LegalLinks consent />

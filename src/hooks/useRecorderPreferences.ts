@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
+import { hasRecordlySession, recordlyAuthConfigured } from "@/lib/auth/recordlyAuth";
 import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
 import {
 	type BrowserMicrophoneProfile,
@@ -40,7 +40,13 @@ export function useRecorderPreferences() {
 	});
 
 	const preparePermissions = useCallback(async () => {
-		if (!import.meta.env.DEV && !(await hasRecordlySession().catch(() => false))) {
+		// Local-only mode: when no cloud auth is configured in this build there is
+		// no account to sign in with, so recording stays available without a session.
+		if (
+			!import.meta.env.DEV &&
+			recordlyAuthConfigured &&
+			!(await hasRecordlySession().catch(() => false))
+		) {
 			await window.electronAPI.showProjectDashboard();
 			return false;
 		}

@@ -13,7 +13,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseSilenceIntervals, SILENCE_DETECT_MIN_S, SILENCE_NOISE_DB } from "../captions/silence";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
-import { computeDeadSpaces, type DeadSpaceSpan } from "@/lib/revoice/deadSpace";
+import { computeDeadSpaces, type DeadSpaceSpan } from "../../../src/lib/revoice/deadSpace";
 
 const execFileAsync = promisify(execFile);
 
