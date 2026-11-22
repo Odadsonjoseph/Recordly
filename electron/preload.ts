@@ -948,6 +948,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRevoiceModelStatus: () => {
 		return ipcRenderer.invoke("get-revoice-model-status");
 	},
+	detectDeadSpaces: (options: {
+		videoPath: string;
+		thresholdMs?: number;
+		keepMs?: number;
+		durationMs?: number;
+	}) => {
+		return ipcRenderer.invoke("detect-dead-spaces", options);
+	},
 	setCurrentVideoPath: (
 		path: string,
 		options?: {

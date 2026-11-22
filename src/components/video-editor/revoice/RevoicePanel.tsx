@@ -27,6 +27,7 @@
 import { useState } from "react";
 import { DEFAULT_REVOICE_OPTIONS, REVOICE_VOICES, type RevoiceResult } from "@/shared/revoice";
 import type { CaptionCue } from "@/components/video-editor/types";
+import type { DeadSpaceSpan } from "@/lib/revoice/deadSpace";
 
 interface RevoicePanelProps {
 	videoPath: string;
@@ -34,14 +35,17 @@ interface RevoicePanelProps {
 	cues: CaptionCue[];
 	onRevoiceDone: (result: RevoiceResult) => void;
 	onUseOriginal: () => void;
+	/** v4 — cuts the given spans out of the timeline (ripple delete). */
+	onRemoveDeadSpaces?: (spans: DeadSpaceSpan[]) => void;
 }
 
-export function RevoicePanel({ videoPath, cues, onRevoiceDone, onUseOriginal }: RevoicePanelProps) {
+export function RevoicePanel({ videoPath, cues, onRevoiceDone, onUseOriginal, onRemoveDeadSpaces }: RevoicePanelProps) {
 	const [voiceId, setVoiceId] = useState(DEFAULT_REVOICE_OPTIONS.voiceId);
 	const [speed, setSpeed] = useState(DEFAULT_REVOICE_OPTIONS.speed);
 	const [status, setStatus] = useState<string>("");
 	const [busy, setBusy] = useState(false);
 	const [result, setResult] = useState<RevoiceResult | null>(null);
+	const [deadSpaceStatus, setDeadSpaceStatus] = useState<string>("");
 
 	async function run() {
 		setBusy(true);
@@ -123,6 +127,52 @@ export function RevoicePanel({ videoPath, cues, onRevoiceDone, onUseOriginal }: 
 				</button>
 			) : null}
 			{status ? <p className="text-xs opacity-80">{status}</p> : null}
+			{onRemoveDeadSpaces ? (
+				<div className="flex flex-col gap-2 border-t pt-3">
+					<h4 className="text-xs font-semibold">Dead spaces</h4>
+					<p className="text-xs opacity-70">
+						Finds silent gaps over 2 seconds and cuts them out of the video,
+						keeping a short natural pause. Cut first, then re-voice — or re-voice
+						again after cutting, so the new voice matches the shorter video.
+					</p>
+					<button
+						type="button"
+						disabled={busy}
+						className="rounded border px-3 py-2 text-sm disabled:opacity-40"
+						onClick={async () => {
+							setBusy(true);
+							setDeadSpaceStatus("Listening for silent gaps…");
+							try {
+								const response: {
+									success: boolean;
+									spans?: DeadSpaceSpan[];
+									removedMs?: number;
+									error?: string;
+								} = await window.electronAPI.detectDeadSpaces({ videoPath });
+								if (!response.success || !response.spans) {
+									throw new Error(response.error ?? "Dead-space detection failed.");
+								}
+								if (!response.spans.length) {
+									setDeadSpaceStatus("No silent gaps over 2 seconds found.");
+								} else {
+									const seconds = ((response.removedMs ?? 0) / 1000).toFixed(1);
+									onRemoveDeadSpaces(response.spans);
+									setDeadSpaceStatus(
+										`Cut ${response.spans.length} gap${response.spans.length === 1 ? "" : "s"} — video is ${seconds}s shorter.`,
+									);
+								}
+							} catch (error) {
+								setDeadSpaceStatus(error instanceof Error ? error.message : String(error));
+							} finally {
+								setBusy(false);
+							}
+						}}
+					>
+						{busy ? "Cutting…" : "Cut dead spaces"}
+					</button>
+					{deadSpaceStatus ? <p className="text-xs opacity-80">{deadSpaceStatus}</p> : null}
+				</div>
+			) : null}
 			<p className="text-[11px] opacity-50">
 				Free and offline after a one-time voice download (~300 MB). No API key.
 			</p>

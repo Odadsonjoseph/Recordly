@@ -103,6 +103,7 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		videoPath: videoPath ?? undefined,
 		audioRegions: timeline.audioRegions,
 		onAudioAdded: audioCommands.handleAudioAdded,
+		onRemoveDeadSpaces: clipCommands.handleRemoveDeadSpaces,
 		selectedAudioId: timeline.selectedAudioId,
 		selectedAudioVolume: selectedAudio?.volume ?? null,
 		selectedAudioNormalize:

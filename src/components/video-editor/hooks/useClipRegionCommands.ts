@@ -10,6 +10,7 @@ import {
 } from "../clipSequence";
 import { changeClipSpan } from "../clipSpanChange";
 import { planClipSplit } from "../clipSplit";
+import { mapDeadSpaceSpansToTimeline, type DeadSpaceSpan } from "@/lib/revoice/deadSpace";
 import type { ClipSequenceSpan } from "../timeline/core/timelineTypes";
 import type { ClipRegion, EditorEffectSection, ZoomRegion } from "../types";
 import { type AnnotationRegion, type AudioRegion, getClipSourceStartMs } from "../types";
@@ -256,6 +257,41 @@ export function useClipRegionCommands({
 		],
 	);
 
+	// v4 — dead-space removal (AI Re-voice). Cut every span out of the clip
+	// sequence with a ripple delete: split at each span edge, drop the middle
+	// clip, applySequence packs the gap and ripples zooms/annotations/audio.
+	// Captions are stored in source time and re-projected, so they follow.
+	// Spans arrive in source time; map them to timeline time first.
+	// NOTE: per-clip source-audio overrides on a cut clip are not inherited
+	// by the halves (same as handleClipDelete) — acceptable for v4.
+	const handleRemoveDeadSpaces = useCallback(
+		(spans: DeadSpaceSpan[]) => {
+			const timelineSpans = mapDeadSpaceSpansToTimeline(spans, clipRegions);
+			if (timelineSpans.length === 0) return;
+			// Latest first so earlier timeline positions stay valid while splitting.
+			const edited = [...timelineSpans]
+				.sort((a, b) => b.startMs - a.startMs)
+				.reduce<ClipRegion[]>((current, span) => {
+					const createId = () => `clip-${nextClipIdRef.current++}`;
+					const first = planClipSplit({ clipRegions: current, splitMs: span.startMs, createId });
+					if (!first) return current;
+					const afterFirst = current.flatMap((clip) =>
+						clip.id === first.targetId ? [first.left, first.right] : [clip],
+					);
+					const second = planClipSplit({ clipRegions: afterFirst, splitMs: span.endMs, createId });
+					if (!second) return afterFirst;
+					const afterSecond = afterFirst.flatMap((clip) =>
+						clip.id === second.targetId ? [second.left, second.right] : [clip],
+					);
+					// second.left is the clip spanning [span.startMs, span.endMs).
+					return afterSecond.filter((clip) => clip.id !== second.left.id);
+				}, clipRegions);
+			if (edited.length === clipRegions.length) return;
+			applySequence(edited);
+		},
+		[clipRegions, applySequence, nextClipIdRef],
+	);
+
 	const canMergeClips = (ids: string[]) =>
 		planClipMerge(clipRegions, ids, getSourceAudioTrackSettingsForClip) !== null;
 
@@ -284,5 +320,6 @@ export function useClipRegionCommands({
 		handleClipMutedChange,
 		handleClipShowSourceAudioChange,
 		handleClipDelete,
+		handleRemoveDeadSpaces,
 	};
 }

@@ -924,6 +924,18 @@ interface Window {
 			modelUrl?: string;
 			error?: string;
 		}>;
+		detectDeadSpaces: (options: {
+			videoPath: string;
+			thresholdMs?: number;
+			keepMs?: number;
+			durationMs?: number;
+		}) => Promise<{
+			success: boolean;
+			spans?: { startMs: number; endMs: number }[];
+			removedMs?: number;
+			silenceCount?: number;
+			error?: string;
+		}>;
 		setCurrentVideoPath: (
 			path: string,
 			options?: {

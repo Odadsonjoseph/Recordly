@@ -18,6 +18,7 @@ import { ipcMain } from "electron";
 import type { AutoCaptionGenerationOptions } from "../captions/generate";
 import { generateAutoCaptionsFromVideo } from "../captions/generate";
 import { generateRevoice, type RevoiceCue } from "../revoice/generate";
+import { detectDeadSpaces } from "../revoice/deadSpace";
 import { isKokoroInstalled, KOKORO_MODEL_URL } from "../revoice/kokoro";
 
 export interface GenerateRevoiceRequest {
@@ -86,6 +87,20 @@ export function registerRevoiceHandlers() {
 			return { success: true, installed: await isKokoroInstalled(), modelUrl: KOKORO_MODEL_URL };
 		} catch (error) {
 			return { success: false, installed: false, error: String(error) };
+		}
+	});
+
+	// v4 — dead-space detection. Returns source-time spans; the renderer maps
+	// them to timeline time and cuts with handleRemoveDeadSpaces.
+	ipcMain.handle("detect-dead-spaces", async (_, request: { videoPath: string; thresholdMs?: number; keepMs?: number; durationMs?: number }) => {
+		try {
+			if (!request?.videoPath) {
+				return { success: false, error: "Missing video path." };
+			}
+			const result = await detectDeadSpaces(request.videoPath, request);
+			return { success: true, ...result };
+		} catch (error) {
+			return { success: false, error: error instanceof Error ? error.message : String(error) };
 		}
 	});
 }

@@ -10,6 +10,7 @@ export const captionItemSettingsKeys = [
 	"audioRegions",
 	"onAudioAdded",
 	"onAudioDelete",
+	"onRemoveDeadSpaces",
 	"autoCaptions",
 	"captionCurrentTimeMs",
 	"selectedCaptionId",
@@ -27,6 +28,7 @@ export function CaptionItemSettings(props: Props) {
 		audioRegions,
 		onAudioAdded,
 		onAudioDelete,
+		onRemoveDeadSpaces,
 		autoCaptions,
 		captionCurrentTimeMs,
 		selectedCaptionId,
@@ -77,6 +79,7 @@ export function CaptionItemSettings(props: Props) {
 						if (region) onAudioDelete?.(region.id);
 						setRevoiceAudioPath(null);
 					}}
+					onRemoveDeadSpaces={onRemoveDeadSpaces}
 				/>
 			) : null}
 		</section>

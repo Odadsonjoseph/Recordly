@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import type { CaptionRetimeSpan } from "@/components/video-editor/captionOps";
 import type { Span } from "dnd-timeline";
+import type { DeadSpaceSpan } from "@/lib/revoice/deadSpace";
 import type {
 	AnnotationRegion,
 	AnnotationType,
@@ -49,6 +50,7 @@ export interface SettingsPanelProps {
 	videoPath?: string;
 	audioRegions?: AudioRegion[];
 	onAudioAdded?: (span: Span, audioPath: string, trackIndex?: number) => void;
+	onRemoveDeadSpaces?: (spans: DeadSpaceSpan[]) => void;
 	selectedAudioId?: string | null;
 	selectedAudioVolume?: number | null;
 	selectedAudioNormalize?: boolean | null;
